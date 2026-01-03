@@ -1,0 +1,12 @@
+mode: PAPER
+risk_pct_per_trade: 0.0025
+max_daily_loss_pct: 0.01
+max_weekly_loss_pct: 0.03
+max_drawdown_pct: 0.06
+max_consecutive_losses: 3
+daily_profit_lock_pct: 0.01
+max_trades_per_day: 3
+min_rr: 3.0
+min_price: 10.0
+min_avg_volume: 5000000
+max_spread: 0.03

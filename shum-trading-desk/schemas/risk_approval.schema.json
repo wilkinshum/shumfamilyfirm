@@ -1,0 +1,37 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "RiskApproval",
+  "type": "object",
+  "required": ["decision", "symbol", "side", "qty", "risk", "constraints_checked", "order_intent", "reason"],
+  "properties": {
+    "decision": {"type": "string", "enum": ["APPROVE", "REJECT"]},
+    "symbol": {"type": "string"},
+    "side": {"type": "string", "enum": ["BUY"]},
+    "qty": {"type": "integer", "minimum": 0},
+    "risk": {
+      "type": "object",
+      "required": ["equity", "risk_per_trade_usd", "stop_distance", "expected_loss_usd", "daily_loss_remaining_usd", "settled_cash_remaining_usd"],
+      "properties": {
+        "equity": {"type": "number"},
+        "risk_per_trade_usd": {"type": "number"},
+        "stop_distance": {"type": "number"},
+        "expected_loss_usd": {"type": "number"},
+        "daily_loss_remaining_usd": {"type": "number"},
+        "settled_cash_remaining_usd": {"type": "number"}
+      }
+    },
+    "constraints_checked": {
+      "type": "object",
+      "properties": {
+        "max_daily_loss": {"type": "boolean"},
+        "max_weekly_loss": {"type": "boolean"},
+        "max_consecutive_losses": {"type": "boolean"},
+        "settled_cash": {"type": "boolean"},
+        "spread_liquidity": {"type": "boolean"},
+        "rr_check": {"type": "boolean"}
+      }
+    },
+    "order_intent": {"$ref": "./order_intent.schema.json"},
+    "reason": {"type": "string"}
+  }
+}
