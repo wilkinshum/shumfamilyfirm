@@ -2,7 +2,9 @@
 from __future__ import annotations
 
 import datetime as dt
-from typing import Dict, Any
+import random
+import json
+from typing import Dict, Any, Optional
 
 from .settled_cash_ledger import SettledCashLedger
 from . import storage
@@ -15,6 +17,8 @@ def place_bracket_order(
     candidate_ref: str,
     strategy_id: str,
     ledger: SettledCashLedger,
+    rng: Optional[random.Random] = None,
+    verbose: bool = False,
 ) -> Dict[str, Any]:
     now = dt.datetime.utcnow()
     entry_price = order_intent["entry"]["price"]
@@ -43,7 +47,9 @@ def place_bracket_order(
         {"trade_id": trade_id, "side": "BUY", "price": entry_price, "qty": qty, "timestamp": now.isoformat()},
     )
 
-    win = (hash(candidate_ref) % 2) == 0
+    if rng is None:
+        rng = random.Random(hash(candidate_ref))
+    win = rng.random() >= 0.5
     exit_price = take_profit_price if win else stop_price
     exit_time = now + dt.timedelta(minutes=1)
     pnl = (exit_price - entry_price) * qty
@@ -53,6 +59,21 @@ def place_bracket_order(
         db_path,
         {"trade_id": trade_id, "side": "SELL", "price": exit_price, "qty": qty, "timestamp": exit_time.isoformat()},
     )
+
+    if verbose:
+        print(
+            json.dumps(
+                {
+                    "candidate_ref": candidate_ref,
+                    "win": win,
+                    "entry": entry_price,
+                    "exit": exit_price,
+                    "qty": qty,
+                    "pnl": pnl,
+                },
+                indent=2,
+            )
+        )
 
     closed_trade = trade | {
         "exit_price": exit_price,

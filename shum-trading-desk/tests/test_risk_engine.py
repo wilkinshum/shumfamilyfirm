@@ -46,3 +46,28 @@ def test_approves_basic_case():
     assert decision["qty"] > 0
     expected_qty = int((100_000 * 0.0025) // 1.0)
     assert decision["qty"] == expected_qty
+
+
+def test_rejects_liquidity_constraints():
+    snapshot = {"last": 9.0, "spread": 0.05, "avg_volume": 1_000_000}
+    decision = approve_or_reject(
+        BASE_CANDIDATE,
+        RISK_CFG,
+        equity=100_000,
+        settled_cash_available=100_000,
+        market_snapshot=snapshot,
+    )
+    assert decision["decision"] == "REJECT"
+    assert decision["constraints_checked"]["spread_liquidity"] is False
+
+
+def test_rejects_daily_loss_lockout():
+    decision = approve_or_reject(
+        BASE_CANDIDATE,
+        RISK_CFG,
+        equity=100_000,
+        settled_cash_available=100_000,
+        daily_loss_to_date=100_000 * RISK_CFG.max_daily_loss_pct,
+    )
+    assert decision["decision"] == "REJECT"
+    assert decision["constraints_checked"]["max_daily_loss"] is False

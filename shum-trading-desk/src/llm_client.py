@@ -52,11 +52,19 @@ class MockLLMClient:
                 {"agent": "strategy_vwap", "input": {"universe": self.universe}},
             ],
             "trade_intents": [
-                {"candidate_ref": f"orb:{sym}:{self.as_of}" , "priority": 1}
+                {"candidate_ref": f"orb:{sym}:{self.as_of}:c0", "priority": 1}
                 for sym in self.universe
             ]
             + [
-                {"candidate_ref": f"vwap:{sym}:{self.as_of}" , "priority": 2}
+                {"candidate_ref": f"orb:{sym}:{self.as_of}:c1", "priority": 2}
+                for sym in self.universe
+            ]
+            + [
+                {"candidate_ref": f"vwap:{sym}:{self.as_of}:c0", "priority": 3}
+                for sym in self.universe
+            ]
+            + [
+                {"candidate_ref": f"vwap:{sym}:{self.as_of}:c1", "priority": 4}
                 for sym in self.universe
             ],
             "notes": "Deterministic mock CIO plan",
@@ -75,6 +83,8 @@ class MockLLMClient:
                     "ask": 100.1,
                     "spread": 0.002,
                     "avg_volume": 6_000_000,
+                    "ok": True,
+                    "issues": [],
                 }
                 for sym in self.universe
             ],
@@ -84,6 +94,7 @@ class MockLLMClient:
         return {
             "as_of": dt.datetime.utcnow().strftime(ISOFORMAT),
             "blocked": [],
+            "by_symbol": {sym: {"ok": True, "issues": []} for sym in self.universe},
             "notes": "No adverse news detected",
         }
 
@@ -93,6 +104,9 @@ class MockLLMClient:
         entry = 100.0
         stop = 98.5
         take_profit = 105.0
+        entry2 = 100.5
+        stop2 = 99.0
+        take_profit2 = 105.5
         return {
             "as_of": as_of,
             "strategy_id": strategy_id,
@@ -105,10 +119,25 @@ class MockLLMClient:
                     "stop": {"type": "STOP", "price": stop},
                     "take_profit": {"type": "LIMIT", "price": take_profit},
                     "time_in_force": "DAY",
-                    "setup_tags": [strategy_id, "mock"],
+                    "setup_tags": [strategy_id, "mock", "primary"],
                     "expected_r_multiple": (take_profit - entry) / (entry - stop),
                     "confidence": 0.6,
                     "notes": "Deterministic mock candidate",
+                }
+                for sym in self.universe
+            ]
+            + [
+                {
+                    "symbol": sym,
+                    "side": "BUY",
+                    "entry": {"type": "LIMIT", "price": entry2},
+                    "stop": {"type": "STOP", "price": stop2},
+                    "take_profit": {"type": "LIMIT", "price": take_profit2},
+                    "time_in_force": "DAY",
+                    "setup_tags": [strategy_id, "mock", "secondary"],
+                    "expected_r_multiple": (take_profit2 - entry2) / (entry2 - stop2),
+                    "confidence": 0.5,
+                    "notes": "Secondary deterministic candidate",
                 }
                 for sym in self.universe
             ],
