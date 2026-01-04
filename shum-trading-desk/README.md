@@ -5,10 +5,11 @@ Paper-first, multi-agent orchestration where LLM agents propose JSON actions and
 ## Quickstart
 1) Create venv: `python -m venv .venv && .venv\Scripts\activate`
 2) Install deps: `pip install -r requirements.txt`
-3) Run orchestrator (paper): `python -m src.orchestrator --verbose --seed 1`
+3) Run orchestrator (paper, mock LLM): `python -m src.orchestrator --verbose --seed 1`
+4) Live LLM (OpenAI, GPT-5.2): set `OPENAI_API_KEY`, then `python -m src.orchestrator --llm openai --model gpt-5.2 --verbose --seed 1`
 
 ## Architecture
-- Agents (CIO, strategies, market data, news) emit STRICT JSON matching schemas in `schemas/`.
+- Agents (CIO, strategies, market data, news) emit STRICT JSON matching schemas in `schemas/`; live mode validates with jsonschema before use.
 - `src/orchestrator.py` drives flow: load config, call agents (mocked via `MockLLMClient`), collect candidates (two per strategy for priority testing), enforce data quality/news filters, request deterministic risk approval, then simulate execution.
 - `src/risk_engine.py` is the authority: sizes positions, enforces RR≥3, daily/weekly loss limits, cash checks, liquidity gates.
 - `src/execution_paper.py` fills brackets immediately, resolves to stop/TP deterministically (seedable), updates `SettledCashLedger`, writes trades/fills to SQLite via `src/storage.py` and logs incidents/metrics.
@@ -29,7 +30,7 @@ Paper-first, multi-agent orchestration where LLM agents propose JSON actions and
 SQLite file `shum_trading.db` with tables: trades, fills, daily_metrics, incidents. Initialized automatically by orchestrator.
 
 ## Tests
-Run `pytest` to validate ledger settlement, liquidity gates, and loss lockouts.
+Run `pytest` to validate ledger settlement, liquidity gates, loss lockouts, and RR sizing.
 
 ## Example run (mock, truncated)
 ```

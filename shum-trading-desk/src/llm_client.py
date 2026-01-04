@@ -1,11 +1,18 @@
-"""Mock LLM client for deterministic agent outputs."""
+"""LLM clients for agent orchestration."""
 from __future__ import annotations
 
 import datetime as dt
+import json
+import os
 from dataclasses import dataclass
 from typing import Any, Dict, List
 
 ISOFORMAT = "%Y-%m-%dT%H:%M:%SZ"
+
+try:
+    import openai
+except ImportError:  # pragma: no cover - optional dependency for live mode
+    openai = None
 
 
 @dataclass
@@ -32,7 +39,6 @@ class MockLLMClient:
         if agent_lower in {"strategy_orb", "strategy_vwap"}:
             strategy_id = agent_lower.replace("strategy_", "")
             return LLMResponse(agent=agent_lower, content=self._strategy_signal(strategy_id))
-        # Developer agent stub
         return LLMResponse(agent=agent_lower, content={"notes": "No-op"})
 
     def _cio_plan(self) -> Dict[str, Any]:
@@ -143,3 +149,39 @@ class MockLLMClient:
             ],
             "data_quality": {"ok": True, "issues": []},
         }
+
+
+class OpenAIClient:
+    """Live OpenAI client for agent calls (strict JSON contract)."""
+
+    def __init__(self, api_key: str, model: str, prompt_dir: str, universe: List[str] | None = None) -> None:
+        if openai is None:
+            raise ImportError("openai package not installed; install to use live mode")
+        self.client = openai.OpenAI(api_key=api_key)
+        self.model = model
+        self.prompt_dir = prompt_dir
+        self.universe = universe or ["SPY", "QQQ"]
+
+    def _load_prompt(self, agent: str) -> str:
+        path = os.path.join(self.prompt_dir, f"{agent}.system.md")
+        with open(path, "r", encoding="utf-8") as f:
+            return f.read()
+
+    def complete(self, agent: str, payload: Dict[str, Any] | None = None) -> LLMResponse:
+        payload = payload or {}
+        system_prompt = self._load_prompt(agent)
+        user_content = json.dumps(payload)
+        resp = self.client.chat.completions.create(
+            model=self.model,
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_content},
+            ],
+            temperature=0,
+        )
+        text = resp.choices[0].message.content.strip()
+        try:
+            content = json.loads(text)
+        except json.JSONDecodeError as exc:  # pragma: no cover - depends on API
+            raise ValueError(f"Non-JSON response from {agent}: {text}") from exc
+        return LLMResponse(agent=agent, content=content)

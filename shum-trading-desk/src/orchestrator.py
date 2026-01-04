@@ -8,8 +8,8 @@ import argparse
 import random
 from typing import Dict, Any, List
 
-from .utils import load_yaml
-from .llm_client import MockLLMClient
+from .utils import load_yaml, load_json_schema, validate_json
+from .llm_client import MockLLMClient, OpenAIClient, LLMResponse
 from .risk_engine import RiskConfig, approve_or_reject
 from .settled_cash_ledger import SettledCashLedger
 from .execution_paper import place_bracket_order
@@ -20,12 +20,16 @@ from . import metrics
 BASE_DIR = os.path.dirname(os.path.dirname(__file__))
 CONFIG_DIR = os.path.join(BASE_DIR, "config")
 DB_PATH = os.path.join(BASE_DIR, "shum_trading.db")
+SCHEMA_DIR = os.path.join(BASE_DIR, "schemas")
 
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Run paper orchestrator")
     parser.add_argument("--verbose", action="store_true", help="Print detailed approvals and fills")
     parser.add_argument("--seed", type=int, default=None, help="Seed for deterministic P&L outcomes")
+    parser.add_argument("--llm", choices=["mock", "openai"], default="mock", help="LLM provider")
+    parser.add_argument("--model", default="gpt-5.2", help="LLM model name for live mode")
+    parser.add_argument("--api-key-env", default="OPENAI_API_KEY", help="Env var holding API key")
     return parser.parse_args()
 
 
@@ -35,13 +39,17 @@ def run(args: argparse.Namespace | None = None) -> None:
     risk_cfg = RiskConfig.from_dict(load_yaml(os.path.join(CONFIG_DIR, "risk.yaml")))
     universe_cfg = load_yaml(os.path.join(CONFIG_DIR, "universe.yaml"))
     universe = universe_cfg.get("symbols", [])
+    cio_schema = load_json_schema(os.path.join(SCHEMA_DIR, "cio_output.schema.json"))
+    signal_schema = load_json_schema(os.path.join(SCHEMA_DIR, "signal_output.schema.json"))
 
     storage.init_db(DB_PATH)
     equity, daily_pnl, consecutive_losses = storage.fetch_today_state(DB_PATH, dt.date.today())
     ledger = SettledCashLedger(settled_cash=equity)
 
-    llm = MockLLMClient(universe=universe)
-    cio_plan = llm.complete("cio", {}).content
+    llm = _make_llm(args, universe)
+    cio_resp: LLMResponse = llm.complete("cio", {})
+    validate_json(cio_resp.content, cio_schema)
+    cio_plan = cio_resp.content
     market_data_resp = llm.complete("market_data", {}).content
     news_resp = llm.complete("news_risk", {}).content
     if not market_data_resp.get("ok", True):
@@ -57,8 +65,9 @@ def run(args: argparse.Namespace | None = None) -> None:
     for call in cio_plan.get("agent_calls", []):
         agent = call.get("agent")
         if agent.startswith("strategy_"):
-            out = llm.complete(agent, call.get("input", {})).content
-            strategy_outputs[agent] = out
+            out_resp = llm.complete(agent, call.get("input", {}))
+            validate_json(out_resp.content, signal_schema)
+            strategy_outputs[agent] = out_resp.content
 
     candidates: Dict[str, Dict[str, Any]] = {}
     news_by_symbol = news_resp.get("by_symbol", {})
@@ -140,6 +149,16 @@ def run(args: argparse.Namespace | None = None) -> None:
 
     print("Daily summary")
     print(json.dumps(summary, indent=2))
+
+
+def _make_llm(args: argparse.Namespace, universe: List[str]) -> MockLLMClient | OpenAIClient:
+    if args.llm == "mock":
+        return MockLLMClient(universe=universe)
+    api_key = os.getenv(args.api_key_env)
+    if not api_key:
+        raise RuntimeError(f"Missing API key in env var {args.api_key_env}")
+    prompt_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "agents")
+    return OpenAIClient(api_key=api_key, model=args.model, prompt_dir=prompt_dir, universe=universe)
 
 
 if __name__ == "__main__":
